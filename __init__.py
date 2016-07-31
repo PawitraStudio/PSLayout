@@ -1,48 +1,123 @@
+# ##### BEGIN GPL LICENSE BLOCK #####
+#
+#  This program is free software; you can redistribute it and/or
+#  modify it under the terms of the GNU General Public License
+#  as published by the Free Software Foundation; either version 2
+#  of the License, or (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software Foundation,
+#  Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+#
+# ##### END GPL LICENSE BLOCK #####
+
+# Author: Adhi Hargo (cadmus.sw@gmail.com)
+
 import bpy
-import os
+import csv
 import re
+import os
 import zipfile
-from bpy.props import *
-from os import path
+import xml.dom
 from bpy_extras.io_utils import ImportHelper
 from bpy.app.handlers import persistent
 from bpy.types import Panel, Operator
 
 bl_info = {
-    "name": "PSLayout",
-    "author": "Aditia A. Pratama, Adhi Hargo, Johan Tri Handoyo, ",
+    "name": "PS Layout Tools",
+    "author": "Aditia A. Pratama, Adhi Hargo, JPSn Tri Handoyo",
     "version": (1, 0, 4),
     "blender": (2, 77, 0),
-    "location": "Sequencer > Tools > PSLayout",
+    "location": "Sequencer > Tools > PS Layout Tools",
     "description": "Create layout files.",
     "warning": "",
     "wiki_url": "https://github.com/pawitrastudio/PSLayout",
     "tracker_url": "https://github.com/pawitrastudio/PSLayout/issues",
     "category": "Sequencer"}
 
-class PS_LayoutProps(bpy.types.PropertyGroup):
+
+# ========== constants for Open Document Spreadsheet creation ==========
+CONTENT_FN = "content.xml"
+CONTENT_DOCATTRS = set([
+    ("xmlns:office", "urn:oasis:names:tc:opendocument:xmlns:office:1.0"),
+    ("xmlns:style", "urn:oasis:names:tc:opendocument:xmlns:style:1.0"),
+    ("xmlns:text", "urn:oasis:names:tc:opendocument:xmlns:text:1.0"),
+    ("xmlns:table", "urn:oasis:names:tc:opendocument:xmlns:table:1.0"),
+    ("xmlns:fo", "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"),
+    ("xmlns:meta", "urn:oasis:names:tc:opendocument:xmlns:meta:1.0"),
+    ("office:version", "1.2")])
+SETTINGS_FN = "settings.xml"
+SETTINGS_DOCATTRS = set([
+    ("xmlns:office", "urn:oasis:names:tc:opendocument:xmlns:office:1.0"),
+    ("xmlns:xlink", "http://www.w3.org/1999/xlink"),
+    ("xmlns:config", "urn:oasis:names:tc:opendocument:xmlns:config:1.0"),
+    ("xmlns:ooo", "http://openoffice.org/2004/office"),
+    ("office:version", "1.2")])
+META_FN = "meta.xml"
+META_DOCATTRS = set([
+    ("xmlns:office", "urn:oasis:names:tc:opendocument:xmlns:office:1.0"),
+    ("xmlns:xlink", "http://www.w3.org/1999/xlink"),
+    ("xmlns:dc", "http://purl.org/dc/elements/1.1/"),
+    ("xmlns:meta", "urn:oasis:names:tc:opendocument:xmlns:meta:1.0"),
+    ("xmlns:ooo", "http://openoffice.org/2004/office"),
+    ("xmlns:grddl", "http://www.w3.org/2003/g/data-view#"),
+    ("office:version", "1.2")])
+MANIFEST_FN = "META-INF/manifest.xml"
+MANIFEST_DATA = r'''<?xml version="1.0" encoding="UTF-8"?>
+<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.2">
+ <manifest:file-entry manifest:full-path="/" manifest:version="1.2" manifest:media-type="application/vnd.oasis.opendocument.spreadsheet"/>
+ <manifest:file-entry manifest:full-path="settings.xml" manifest:media-type="text/xml"/>
+ <manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>
+ <manifest:file-entry manifest:full-path="meta.xml" manifest:media-type="text/xml"/>
+ <manifest:file-entry manifest:full-path="styles.xml" manifest:media-type="text/xml"/>
+</manifest:manifest>'''
+MIMETYPE_FN = "mimetype"
+MIMETYPE_DATA = "application/vnd.oasis.opendocument.spreadsheet"
+STYLES_FN = "styles.xml"
+
+class PS_LayoutToolsProps(bpy.types.PropertyGroup):
     render_marker_infos = []
     marker_infos = []
 
-class PS_LayoutPreferences(bpy.types.AddonPreferences):
+class PS_LayoutToolsPreferences(bpy.types.AddonPreferences):
     bl_idname = __name__
 
-    layout_path = StringProperty(
-        name="Layout Folder",
-        description="Default layout path",
+    is_export_ods = bpy.props.BoolProperty(
+        name="Shot List to Spreadsheet",
+        description="Write shot list to Open Document spreadsheet (.ods)",
+        default=False)
+
+    is_export_csv = bpy.props.BoolProperty(
+        name="Shot List to CSV Textfile",
+        description="Write shot list to Excel comma-separated values.",
+        default=True)
+
+    layout_path = bpy.props.StringProperty(
+        name="Base Layout Path",
+        description="""Base path for all extracted sound and .blend files.
+%(blendname): Name of current .blend file.""",
         default="../%(blendname)",
-        subtype='DIR_PATH'
-    )
-    is_render_video = BoolProperty(
+        subtype='DIR_PATH')
+
+    is_render_video = bpy.props.BoolProperty(
         name="Render Video",
         description="Render video instead of audio file.",
-        default=True
-    )
+        default=True)
 
     def draw(self, context):
         layout = self.layout
 
         cols = layout.column_flow(columns=2, align=True)
+
+        cols.label("Export Format:")
+        row = cols.row(align=True)
+        row.prop(self, "is_export_ods", text="ODS", toggle=True)
+        row.prop(self, "is_export_csv", text="CSV", toggle=True)
 
         cols.label("Layout Path:")
         cols.prop(self, "layout_path", text="")
@@ -50,10 +125,16 @@ class PS_LayoutPreferences(bpy.types.AddonPreferences):
         row = layout.row()
         row.prop(self, "is_render_video")
 
-# ========== OPERATORS ========== #
-class ExtractShotFiles_Base():
-    blendpath = None
-    render_basepath = None
+
+# ============================== operators =============================
+
+class ExtractShotfiles_Base():
+    # This class contains the main shot initialization codes. Its
+    # separation from the outermost operator class doing the actual
+    # rendering, below, is to allow me to experiment with different
+    # render monitoring methods. Otherwise they can be safely merged.
+    blendpath = None            # path of .blend file to restore back to
+    render_basepath = None      # base path of layout files
     render_selected = False
 
     _timer = None
@@ -75,13 +156,170 @@ class ExtractShotFiles_Base():
 
     @classmethod
     def poll(self, context):
-        props = context.scene.pslayout
+        props = context.scene.ps_layout_tools
+
+        # The operator needs the scene to be already saved in a file,
+        # and there's no unrendered shot marker.
         return context.blend_data.is_saved\
             and not props.render_marker_infos
 
+    def write_shot_listing_csv(self, props, lpath):
+        try:
+            csvfile = open(lpath, "w", newline='')
+        except:
+            self.report({"WARNING"}, 'Unable to open "%s", shotlist not written.' % lpath)
+            return
+
+        csvwriter = csv.writer(csvfile, dialect="excel-tab", quoting=csv.QUOTE_MINIMAL)
+        csvwriter.writerow(["Shot", "Start", "End", "Duration"])
+        for mi in props.marker_infos:
+            csvwriter.writerow([mi['name'], mi['start'], mi['end'], mi['end'] - mi['start']])
+
+        csvfile.close()
+
+    def write_shot_listing_ods(self, props, lpath):
+        try:
+            doc = zipfile.ZipFile(lpath, "w", zipfile.ZIP_DEFLATED)
+        except:
+            self.report({"WARNING"}, 'Unable to open "%s", shotlist not written.' % lpath)
+            return
+
+        doc.writestr(MIMETYPE_FN, MIMETYPE_DATA, zipfile.ZIP_STORED)
+        doc.writestr(MANIFEST_FN, MANIFEST_DATA)
+
+        content_doc = xml.dom.getDOMImplementation().createDocument(
+            "office", "office:document-content", None)
+        content_element = content_doc.documentElement
+        for key, value in CONTENT_DOCATTRS:
+            content_doc.documentElement.setAttribute(key, value)
+        for element in ("office:scripts", "office:automatic-styles",
+                        "office:font-face-decls"):
+            content_doc.documentElement.appendChild(content_doc.createElement(element))
+        body = content_doc.createElement("office:body")
+        spreadsheet = content_doc.createElement("office:spreadsheet")
+        table = content_doc.createElement("table:table")
+        column = content_doc.createElement("table:table-column")
+        content_element.appendChild(body)
+        body.appendChild(spreadsheet)
+        spreadsheet.appendChild(table)
+        table.appendChild(column)
+
+        # Insert header
+        if True:
+            row = content_doc.createElement("table:table-row")
+
+            cell = content_doc.createElement("table:table-cell")
+            cell.setAttribute("office:value-type", "string")
+            # cell.setAttribute("table:style-name", "Heading")
+            text = content_doc.createElement("text:p")
+            text_data = content_doc.createTextNode("Shot")
+            text.appendChild(text_data)
+            cell.appendChild(text)
+            row.appendChild(cell)
+
+            cell = content_doc.createElement("table:table-cell")
+            cell.setAttribute("office:value-type", "string")
+            text = content_doc.createElement("text:p")
+            text_data = content_doc.createTextNode("Frame Start")
+            text.appendChild(text_data)
+            cell.appendChild(text)
+            row.appendChild(cell)
+
+            cell = content_doc.createElement("table:table-cell")
+            cell.setAttribute("office:value-type", "string")
+            text = content_doc.createElement("text:p")
+            text_data = content_doc.createTextNode("Frame End")
+            text.appendChild(text_data)
+            cell.appendChild(text)
+            row.appendChild(cell)
+
+            cell = content_doc.createElement("table:table-cell")
+            cell.setAttribute("office:value-type", "string")
+            text = content_doc.createElement("text:p")
+            text_data = content_doc.createTextNode("Duration")
+            text.appendChild(text_data)
+            cell.appendChild(text)
+            row.appendChild(cell)
+
+            table.appendChild(row)
+
+        table.setAttribute("table:name", "Sheet1")
+        for mi in props.marker_infos:
+            framestart = str(mi['start'])
+            frameend = str(mi['end'])
+            framecount = str(mi['end'] - mi['start'])
+            row = content_doc.createElement("table:table-row")
+
+            cell = content_doc.createElement("table:table-cell")
+            cell.setAttribute("office:value-type", "string")
+            text = content_doc.createElement("text:p")
+            text_data = content_doc.createTextNode(mi["name"])
+            text.appendChild(text_data)
+            cell.appendChild(text)
+            row.appendChild(cell)
+
+            cell = content_doc.createElement("table:table-cell")
+            cell.setAttribute("office:value-type", "float")
+            cell.setAttribute("office:value", framestart)
+            text = content_doc.createElement("text:p")
+            text_data = content_doc.createTextNode(framestart)
+            text.appendChild(text_data)
+            cell.appendChild(text)
+            row.appendChild(cell)
+
+            cell = content_doc.createElement("table:table-cell")
+            cell.setAttribute("office:value-type", "float")
+            cell.setAttribute("office:value", frameend)
+            text = content_doc.createElement("text:p")
+            text_data = content_doc.createTextNode(frameend)
+            text.appendChild(text_data)
+            cell.appendChild(text)
+            row.appendChild(cell)
+
+            cell = content_doc.createElement("table:table-cell")
+            cell.setAttribute("office:value-type", "float")
+            cell.setAttribute("office:value", framecount)
+            text = content_doc.createElement("text:p")
+            text_data = content_doc.createTextNode(framecount)
+            text.appendChild(text_data)
+            cell.appendChild(text)
+            row.appendChild(cell)
+
+            table.appendChild(row)
+
+        doc.writestr(CONTENT_FN, content_doc.toxml(encoding="UTF-8"))
+
+        meta_doc = xml.dom.getDOMImplementation().createDocument(
+            "office", "office:document-meta", None)
+        for key, value in META_DOCATTRS:
+            meta_doc.documentElement.setAttribute(key, value)
+        meta = meta_doc.createElement("office:meta")
+        meta_doc.documentElement.appendChild(meta)
+        doc.writestr(META_FN, meta_doc.toxml(encoding="UTF-8"))
+
+        settings_doc = xml.dom.getDOMImplementation().createDocument(
+            "office", "office:document-settings", None)
+        for key, value in SETTINGS_DOCATTRS:
+            settings_doc.documentElement.setAttribute(key, value)
+        settings = settings_doc.createElement("office:settings")
+        settings_doc.documentElement.appendChild(settings)
+        doc.writestr(SETTINGS_FN, settings_doc.toxml(encoding="UTF-8"))
+
+        styles_doc = xml.dom.getDOMImplementation().createDocument(
+            "office", "office:document-styles", None)
+        for key, value in CONTENT_DOCATTRS:
+            styles_doc.documentElement.setAttribute(key, value)
+        styles = styles_doc.createElement("office:styles")
+        styles_doc.documentElement.appendChild(styles)
+        masterstyles = styles_doc.createElement("office:master-styles")
+        styles_doc.documentElement.appendChild(masterstyles)
+        autostyles = styles_doc.createElement("office:automatic-styles")
+        styles_doc.documentElement.appendChild(autostyles)
+        doc.writestr(STYLES_FN, styles_doc.toxml(encoding="UTF-8"))
+
     def write_shot_files(self, context):
         scene = context.scene
-        props = scene.pslayout
+        props = scene.ps_layout_tools
         prefs = context.user_preferences.addons[__name__].preferences
         sequences = scene.sequence_editor.sequences
         scene.timeline_markers.clear()
@@ -98,25 +336,24 @@ class ExtractShotFiles_Base():
             path = os.path.join(self.render_basepath, 'sounds',
                                 mi['name']+'.mov') if prefs.is_render_video else\
                 os.path.join(self.render_basepath, 'sounds',
-                            mi['name']+'.wav')
-
+                             mi['name']+'.wav')
             if not os.path.exists(path):
                 continue
 
-            if prefs.is_render_video:
+            if prefs.is_render_video: # Add video strip
                 duration = mi['end'] - (mi['start']+1)
                 scene.frame_end = scene.frame_start + duration
 
                 seq = sequences.new_sound(mi['name'], path,
-                                        1, scene_frame_start)
+                                          1, scene.frame_start)
                 seq2 = sequences.new_movie(mi['name'], path,
-                                        2, scene_frame_start)
-            else :
+                                           2, scene.frame_start)
+            else: # Add sound strip
                 duration = mi['end'] - (mi['start']+1)
-                scene_frame_end = scene_frame_start + duration
+                scene.frame_end = scene.frame_start + duration
 
                 seq = sequences.new_sound(mi['name'], path,
-                                        1, scene_frame_start)
+                                          1, scene.frame_start)
 
             layoutdir = os.path.join(self.render_basepath, 'layouts')
             markerpath = bpy.path.ensure_ext(
@@ -134,7 +371,7 @@ class ExtractShotFiles_Base():
         # Store marker informations so the markers themselves can be
         # deleted.
         scene = context.scene
-        props = scene.pslayout
+        props = scene.ps_layout_tools
 
         markers = [marker for marker in scene.timeline_markers
                    if marker.frame >= scene.frame_start
@@ -155,7 +392,7 @@ class ExtractShotFiles_Base():
             if self.render_selected else props.marker_infos)
 
     def render_pre_handler(self, context):
-        props = bpy.context.scene.pslayout
+        props = bpy.context.scene.ps_layout_tools
 
         if props.render_marker_infos:
             rmi = props.render_marker_infos.pop(0)
@@ -168,7 +405,7 @@ class ExtractShotFiles_Base():
             self.marker_scene_settings(context, rmi)
 
     def render_complete_handler(self, context):
-        props = context.scene.pslayout
+        props = context.scene.ps_layout_tools
 
         if not props.render_marker_infos:
             self.write_shot_files(context)
@@ -181,7 +418,7 @@ class ExtractShotFiles_Base():
         render = scene.render
         image = render.image_settings
         ffmpeg = render.ffmpeg
-        props = scene.pslayout
+        props = scene.ps_layout_tools
 
         self.scene_frame_start = scene.frame_start
         self.scene_frame_end = scene.frame_end
@@ -201,7 +438,7 @@ class ExtractShotFiles_Base():
         render = scene.render
         image = render.image_settings
         ffmpeg = render.ffmpeg
-        props = scene.pslayout
+        props = scene.ps_layout_tools
 
         scene.frame_start = self.scene_frame_start
         scene.frame_end = self.scene_frame_end
@@ -220,7 +457,7 @@ class ExtractShotFiles_Base():
         render = scene.render
         image = render.image_settings
         ffmpeg = render.ffmpeg
-        props = scene.pslayout
+        props = scene.ps_layout_tools
 
         scene.frame_start =  mi['start']
         scene.frame_end = mi['end']
@@ -241,15 +478,14 @@ class ExtractShotFiles_Base():
 
     def invoke(self, context, event):
         scene = context.scene
-        props = scene.pslayout
+        props = scene.ps_layout_tools
         prefs = context.user_preferences.addons[__name__].preferences
 
         self.render_selected = (event.shift == True)
 
         if not context.blend_data.is_saved:
-            self.report ({"ERROR"}, "Could not extract from unsaved file.")
+            self.report({"ERROR"}, "Could not extract from unsaved file.")
             return {"CANCELLED"}
-
         self.blendpath = bpy.path.abspath(context.blend_data.filepath)
 
         self.init_marker_infos(context)
@@ -262,7 +498,7 @@ class ExtractShotFiles_Base():
         template_str = re.sub(r"(%\([^)]+\))", r"\1s", prefs.layout_path.strip())
         template_dict = dict(blendname=blendname)
         self.render_basepath = os.path.abspath(
-                            os.path.join(blenddir, template_str % template_dict ))
+            os.path.join(blenddir, template_str % template_dict))
 
         if not os.path.exists(self.render_basepath):
             try:
@@ -277,19 +513,20 @@ class ExtractShotFiles_Base():
         if not os.path.exists(sounddir):
             os.makedirs(sounddir)
 
-        # if prefs.is_export_ods:
-        #     self.write_shot_listing_ods(
-        #         props, os.path.join(blenddir, blendname + '.ods'))
-        # if prefs.is_export_csv:
-        #     self.write_shot_listing_csv(
-        #         props, os.path.join(blenddir, blendname + '.txt'))
+        if prefs.is_export_ods:
+            self.write_shot_listing_ods(
+                props, os.path.join(blenddir, blendname + '.ods'))
+        if prefs.is_export_csv:
+            self.write_shot_listing_csv(
+                props, os.path.join(blenddir, blendname + '.txt'))
         self.save_scene_settings(context)
 
         return self.execute(context)
 
-class SEQUENCER_OT_ExtractShotfiles(ExtractShotFiles_Base, Operator):
+
+class SEQUENCER_OT_ExtractShotfiles(ExtractShotfiles_Base, Operator):
     '''Automatically create layout files using marker boundaries. Press SHIFT+click to only extract selected marker/s'''
-    bl_idname = 'sequencer.pslayout_extract_shot_files'
+    bl_idname = 'sequencer.ps_extract_shot_files'
     bl_label = 'Create Layout'
     bl_options = {'REGISTER'}
 
@@ -298,7 +535,7 @@ class SEQUENCER_OT_ExtractShotfiles(ExtractShotFiles_Base, Operator):
     def check_render_file(self, context):
         wm = context.window_manager
         scene = context.scene
-        props = scene.pslayout
+        props = scene.ps_layout_tools
         prefs = context.user_preferences.addons[__name__].preferences
         context.area.tag_redraw()
 
@@ -332,7 +569,7 @@ class SEQUENCER_OT_ExtractShotfiles(ExtractShotFiles_Base, Operator):
 
     def modal(self, context, event):
         wm = context.window_manager
-        props = context.scene.pslayout
+        props = context.scene.ps_layout_tools
 
         if event.type == 'TIMER':
             return self.check_render_file(context)
@@ -347,7 +584,7 @@ class SEQUENCER_OT_ExtractShotfiles(ExtractShotFiles_Base, Operator):
     def execute(self, context):
         wm = context.window_manager
         scene = context.scene
-        props = scene.pslayout
+        props = scene.ps_layout_tools
         prefs = context.user_preferences.addons[__name__].preferences
 
         if not self.blendpath:
@@ -369,9 +606,11 @@ class SEQUENCER_OT_ExtractShotfiles(ExtractShotFiles_Base, Operator):
 
         return {'FINISHED'}
 
+
+
 class SCENE_OT_ImportAssets(Operator, ImportHelper):
     """Import all assets from other .blend file"""
-    bl_idname = "scene.pslayout_import"
+    bl_idname = "scene.ps_import"
     bl_label = "Import Assets"
 
     # ImportHelper mixin class uses this
@@ -531,6 +770,7 @@ class SCENE_OT_rename_markers(bpy.types.Operator):
             marker.name = blendname+'_'+str(i).zfill(3)
         return {'FINISHED'}
 
+
 def draw_func(self, context):
     layout = self.layout
     if context.space_data.view_type == 'SEQUENCER':
@@ -542,16 +782,18 @@ class VIEW3D_PT_proxy_make_all(Panel):
     bl_region_type = 'TOOLS'
     bl_category = "Relations"
     bl_context = "objectmode"
-    bl_label = "PSLayout Make Proxies"
+    bl_label = "PS Make Proxies"
 
     def draw(self, context):
         layout = self.layout
         layout.operator("object.proxy_make_all", icon = "LINK_BLEND")
 
+
 class OBJECT_OT_proxy_make_all(Operator):
     """Make proxies from all selected objects"""
     bl_idname = "object.proxy_make_all"
     bl_label = "Make Proxies"
+
 
     def execute(self, context):
         scene = context.scene
@@ -560,11 +802,13 @@ class OBJECT_OT_proxy_make_all(Operator):
             bpy.ops.object.proxy_make()
         return {'FINISHED'}
 
-# ========== auxiliary functions ========== #
+
+
+# ========================= auxiliary functions ========================
 
 def adjust_duration_to_effects(context):
     scene = context.scene
-    props = scene.pslayout
+    props = scene.ps_layout_tools
     sequences = scene.sequence_editor.sequences
 
     effects = [seq for seq in sequences
@@ -582,24 +826,25 @@ def adjust_duration_to_effects(context):
         if overlap_end:
             mi['end'] = overlap_end[0].frame_final_end
 
-# ========== addon interface ========== #
+
+# =========================== addon interface ==========================
 
 def sequencer_headerbutton(self, context):
     layout = self.layout
 
     row = layout.row(align=True)
-    row.operator('sequencer.pslayout_extract_shot_files', icon='ALIGN',
+    row.operator('sequencer.ps_extract_shot_files', icon='ALIGN',
                  text='Extract')
 
 def menu_func_import(self, context):
-    self.layout.operator("scene.pslayout_import")
+    self.layout.operator("scene.ps_import")
 
 def register():
     bpy.utils.register_module(__name__)
     bpy.types.INFO_MT_file_import.append(menu_func_import)
 
-    bpy.types.Scene.pslayout = bpy.props.PointerProperty(
-        type = PS_LayoutProps)
+    bpy.types.Scene.ps_layout_tools = bpy.props.PointerProperty(
+        type = PS_LayoutToolsProps)
     bpy.types.SEQUENCER_HT_header.append(sequencer_headerbutton)
 
     bpy.types.SEQUENCER_HT_header.append(draw_func)
@@ -608,7 +853,7 @@ def unregister():
     bpy.utils.unregister_module(__name__)
     bpy.types.INFO_MT_file_import.remove(menu_func_import)
 
-    del bpy.types.Scene.pslayout
+    del bpy.types.Scene.ps_layout_tools
     bpy.types.SEQUENCER_HT_header.remove(sequencer_headerbutton)
 
     bpy.types.SEQUENCER_HT_header.remove(draw_func)
