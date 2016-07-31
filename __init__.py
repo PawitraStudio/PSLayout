@@ -97,11 +97,15 @@ class PS_LayoutToolsPreferences(bpy.types.AddonPreferences):
         description="Write shot list to Excel comma-separated values.",
         default=True)
 
+    use_layout_path = bpy.props.BoolProperty(
+        name="Use Layout Path",
+        description="Enable to use custom layout folder",
+        default=False)
+
     layout_path = bpy.props.StringProperty(
         name="Base Layout Path",
         description="""Base path for all extracted sound and .blend files.
 %(blendname): Name of current .blend file.""",
-        default="../%(blendname)",
         subtype='DIR_PATH')
 
     is_render_video = bpy.props.BoolProperty(
@@ -118,12 +122,19 @@ class PS_LayoutToolsPreferences(bpy.types.AddonPreferences):
         row = cols.row(align=True)
         row.prop(self, "is_export_ods", text="ODS", toggle=True)
         row.prop(self, "is_export_csv", text="CSV", toggle=True)
-
-        cols.label("Layout Path:")
-        cols.prop(self, "layout_path", text="")
-
-        row = layout.row()
+        cols.label("Extra Options:")
+        row = cols.row()
         row.prop(self, "is_render_video")
+        row.prop(self, "use_layout_path")
+
+        col = layout.column()
+        col.label("Layout Path:")
+        row = col.row()
+        row.active = self.use_layout_path
+        row.prop(self, "layout_path", text="")
+
+        # row = layout.row()
+
 
 
 # ============================== operators =============================
@@ -473,7 +484,7 @@ class ExtractShotfiles_Base():
         image.file_format = "H264"
 
         ffmpeg.format = 'QUICKTIME'
-        ffmpeg.audio_codec = 'MP3'
+        ffmpeg.audio_codec = 'AAC'
         ffmpeg.audio_bitrate = 192
 
     def invoke(self, context, event):
@@ -495,10 +506,10 @@ class ExtractShotfiles_Base():
 
         blenddir, blendfile = os.path.split(self.blendpath)
         blendname = os.path.splitext(blendfile)[0]
-        template_str = re.sub(r"(%\([^)]+\))", r"\1s", prefs.layout_path.strip())
-        template_dict = dict(blendname=blendname)
+        # template_str = re.sub(r"(%\([^)]+\))", r"\1s", prefs.layout_path.strip())
+        # template_dict = dict(blendname=blendname)
         self.render_basepath = os.path.abspath(
-            os.path.join(blenddir, template_str % template_dict))
+            os.path.join(prefs.layout_path))
 
         if not os.path.exists(self.render_basepath):
             try:
