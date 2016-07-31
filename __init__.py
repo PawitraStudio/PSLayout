@@ -97,14 +97,14 @@ class PS_LayoutToolsPreferences(bpy.types.AddonPreferences):
         description="Write shot list to Excel comma-separated values.",
         default=True)
 
-    use_layout_path = bpy.props.BoolProperty(
-        name="Use Layout Path",
-        description="Enable to use custom layout folder",
+    use_custom_path = bpy.props.BoolProperty(
+        name="Use Custom Path",
+        description="Enable to use custom path folder for layout",
         default=False)
 
     layout_path = bpy.props.StringProperty(
-        name="Base Layout Path",
-        description="""Base path for all extracted sound and .blend files.
+        name="Custom Path",
+        description="""Custom path for all extracted clip and .blend files.
 %(blendname): Name of current .blend file.""",
         subtype='DIR_PATH')
 
@@ -125,12 +125,12 @@ class PS_LayoutToolsPreferences(bpy.types.AddonPreferences):
         cols.label("Extra Options:")
         row = cols.row()
         row.prop(self, "is_render_video")
-        row.prop(self, "use_layout_path")
+        row.prop(self, "use_custom_path")
 
         col = layout.column()
-        col.label("Layout Path:")
+        col.label("Custom Path:")
         row = col.row()
-        row.active = self.use_layout_path
+        row.active = self.use_custom_path
         row.prop(self, "layout_path", text="")
 
         # row = layout.row()
