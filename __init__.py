@@ -40,6 +40,7 @@ bl_info = {
     "tracker_url": "https://github.com/pawitrastudio/PSLayout/issues",
     "category": "Sequencer"}
 
+#TODO delete other scene file and rename current scene
 
 # ========== constants for Open Document Spreadsheet creation ==========
 CONTENT_FN = "content.xml"
@@ -102,10 +103,14 @@ class PS_LayoutToolsPreferences(bpy.types.AddonPreferences):
         description="Enable to use custom path folder for layout",
         default=False)
 
-    layout_path = bpy.props.StringProperty(
-        name="Custom Path",
-        description="""Custom path for all extracted clip and .blend files.
-%(blendname): Name of current .blend file.""",
+    custom_path = bpy.props.StringProperty(
+        name="Custom Layout Path",
+        description="""Custom path for .blend files.""",
+        subtype='DIR_PATH')
+
+    clip_path = bpy.props.StringProperty(
+        name="Custom clips Path",
+        description="""Custom path for all extracted clip files.""",
         subtype='DIR_PATH')
 
     is_render_video = bpy.props.BoolProperty(
@@ -128,14 +133,15 @@ class PS_LayoutToolsPreferences(bpy.types.AddonPreferences):
         row.prop(self, "use_custom_path")
 
         col = layout.column()
-        col.label("Custom Path:")
+        col.label("Custom Layout Path:")
         row = col.row()
         row.active = self.use_custom_path
-        row.prop(self, "layout_path", text="")
-
-        # row = layout.row()
-
-
+        row.prop(self, "custom_path", text="")
+        col = layout.column()
+        col.label("Custom Clip Path:")
+        row = col.row()
+        row.active = self.use_custom_path
+        row.prop(self, "clip_path", text="")
 
 # ============================== operators =============================
 
@@ -344,10 +350,18 @@ class ExtractShotfiles_Base():
 
             seq = None
             seq2 = None
-            path = os.path.join(self.render_basepath, 'sounds',
-                                mi['name']+'.mov') if prefs.is_render_video else\
-                os.path.join(self.render_basepath, 'sounds',
-                             mi['name']+'.wav')
+
+            if prefs.use_custom_path == True:
+                path = os.path.join(self.render_clippath, 'clips',
+                                    mi['name']+'.mov') if prefs.is_render_video else\
+                        os.path.join(self.render_clippath, 'clips',
+                                    mi['name']+'.wav')
+            else:
+                path = os.path.join(self.render_basepath, 'clips',
+                                    mi['name']+'.mov') if prefs.is_render_video else\
+                        os.path.join(self.render_basepath, 'clips',
+                                    mi['name']+'.wav')
+
             if not os.path.exists(path):
                 continue
 
@@ -368,7 +382,7 @@ class ExtractShotfiles_Base():
 
             layoutdir = os.path.join(self.render_basepath, 'layouts')
             markerpath = bpy.path.ensure_ext(
-                filepath=os.path.join(layoutdir, mi['name']), ext=".blend")
+                filepath=os.path.join(layoutdir, mi['name'] + '_layout'), ext=".blend")
             bpy.ops.wm.save_as_mainfile(filepath=markerpath, copy=True,
                                         relative_remap=True)
 
@@ -469,14 +483,19 @@ class ExtractShotfiles_Base():
         image = render.image_settings
         ffmpeg = render.ffmpeg
         props = scene.ps_layout_tools
+        prefs = context.user_preferences.addons[__name__].preferences
 
         scene.frame_start =  mi['start']
         scene.frame_end = mi['end']
         scene.use_audio = False # Audio mustn't be muted upon mixdown.
 
-        self.render_filepath_vid = os.path.join(self.render_basepath, 'sounds',
+        self.render_filepath_vid = os.path.join(self.render_clippath, 'clips',
+                                                mi['name']+'.mov') if prefs.use_custom_path else\
+                                    os.path.join(self.render_basepath, 'clips',
                                                 mi['name']+'.mov')
-        self.render_filepath_aud = os.path.join(self.render_basepath, 'sounds',
+        self.render_filepath_aud = os.path.join(self.render_clippath, 'clips',
+                                                mi['name']+'.wav') if prefs.use_custom_path else \
+                                    os.path.join(self.render_basepath, 'clips',
                                                 mi['name']+'.wav')
         render.filepath = self.render_filepath_vid
         render.display_mode = 'NONE'
@@ -506,10 +525,18 @@ class ExtractShotfiles_Base():
 
         blenddir, blendfile = os.path.split(self.blendpath)
         blendname = os.path.splitext(blendfile)[0]
-        # template_str = re.sub(r"(%\([^)]+\))", r"\1s", prefs.layout_path.strip())
-        # template_dict = dict(blendname=blendname)
-        self.render_basepath = os.path.abspath(
-            os.path.join(prefs.layout_path))
+
+        if prefs.use_custom_path == True:
+            self.render_basepath = os.path.abspath(
+                bpy.path.abspath(prefs.custom_path))
+            self.render_clippath = os.path.abspath(
+                bpy.path.abspath(prefs.clip_path))
+        else:
+            strdefault = "../%(blendname)"
+            template_str = re.sub(r"(%\([^)]+\))", r"\1s", strdefault.strip())
+            template_dict = dict(blendname=blendname)
+            self.render_basepath = os.path.abspath(
+                os.path.join(blenddir, template_str % template_dict))
 
         if not os.path.exists(self.render_basepath):
             try:
@@ -517,12 +544,20 @@ class ExtractShotfiles_Base():
             except:
                 self.report({"ERROR"}, "Unable to create layout directory.")
 
-        layoutdir = os.path.join(self.render_basepath, 'layouts')
-        if not os.path.exists(layoutdir):
-            os.makedirs(layoutdir)
-        sounddir = os.path.join(self.render_basepath, 'sounds')
-        if not os.path.exists(sounddir):
-            os.makedirs(sounddir)
+        if prefs.use_custom_path == True:
+            layoutdir = os.path.join(self.render_basepath, 'layouts')
+            if not os.path.exists(layoutdir):
+                os.makedirs(layoutdir)
+            clipdir = os.path.join(self.render_clippath, 'clips')
+            if not os.path.exists(clipdir):
+                os.makedirs(clipdir)
+        else:
+            layoutdir = os.path.join(self.render_basepath, 'layouts')
+            if not os.path.exists(layoutdir):
+                os.makedirs(layoutdir)
+            clipdir = os.path.join(self.render_basepath, 'clips')
+            if not os.path.exists(clipdir):
+                os.makedirs(clipdir)
 
         if prefs.is_export_ods:
             self.write_shot_listing_ods(
