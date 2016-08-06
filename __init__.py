@@ -29,18 +29,16 @@ from bpy.app.handlers import persistent
 from bpy.types import Panel, Operator
 
 bl_info = {
-    "name": "PS Layout Tools",
-    "author": "Aditia A. Pratama, Adhi Hargo, JPSn Tri Handoyo",
-    "version": (1, 0, 4),
+    "name": "PS Layout",
+    "author": "Aditia A. Pratama, Adhi Hargo, Johan Tri Handoyo",
+    "version": (1, 0, 5),
     "blender": (2, 77, 0),
-    "location": "Sequencer > Tools > PS Layout Tools",
-    "description": "Create layout files.",
+    "location": "Sequencer > Tools > PS Layout",
+    "description": "Create layout files from animatic video.",
     "warning": "",
     "wiki_url": "https://github.com/pawitrastudio/PSLayout",
     "tracker_url": "https://github.com/pawitrastudio/PSLayout/issues",
     "category": "Sequencer"}
-
-#TODO delete other scene file and rename current scene
 
 # ========== constants for Open Document Spreadsheet creation ==========
 CONTENT_FN = "content.xml"
@@ -339,6 +337,7 @@ class ExtractShotfiles_Base():
         props = scene.ps_layout_tools
         prefs = context.user_preferences.addons[__name__].preferences
         sequences = scene.sequence_editor.sequences
+        scenes = bpy.data.scenes
         scene.timeline_markers.clear()
 
         self.restore_scene_settings(context)
@@ -379,6 +378,12 @@ class ExtractShotfiles_Base():
 
                 seq = sequences.new_sound(mi['name'], path,
                                           1, scene.frame_start)
+
+            scene.name = mi['name'] + '_layout'
+
+            for scn in scenes:
+                if scn.name != scene.name:
+                    scenes.remove(scn, do_unlink=True)
 
             layoutdir = os.path.join(self.render_basepath, 'layouts')
             markerpath = bpy.path.ensure_ext(
