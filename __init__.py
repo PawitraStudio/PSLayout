@@ -385,9 +385,10 @@ class ExtractShotfiles_Base():
                 if scn.name != scene.name:
                     scenes.remove(scn, do_unlink=True)
 
-            layoutdir = os.path.join(self.render_basepath, 'layouts')
+            layoutdir = os.path.join(self.render_basepath) if prefs.use_custom_path else\
+                        os.path.join(self.render_basepath, 'layouts')
             markerpath = bpy.path.ensure_ext(
-                filepath=os.path.join(layoutdir, mi['name'] + '_layout'), ext=".blend")
+                filepath=os.path.join(layoutdir, mi['name']), ext=".blend")
             bpy.ops.wm.save_as_mainfile(filepath=markerpath, copy=True,
                                         relative_remap=True)
 
@@ -456,6 +457,7 @@ class ExtractShotfiles_Base():
 
         self.render_filepath = render.filepath
         self.render_display_mode = render.display_mode
+        self.render_use_compositing = render.use_compositing
 
         self.image_file_format = image.file_format
 
@@ -476,6 +478,7 @@ class ExtractShotfiles_Base():
 
         render.filepath = self.render_filepath
         render.display_mode = self.render_display_mode
+        render.use_compositing = self.render_use_compositing
 
         image.file_format = self.image_file_format
         ffmpeg.format = self.ffmpeg_format
@@ -504,6 +507,7 @@ class ExtractShotfiles_Base():
                                                 mi['name']+'.wav')
         render.filepath = self.render_filepath_vid
         render.display_mode = 'NONE'
+        render.use_compositing = False
 
         image.file_format = "H264"
 
