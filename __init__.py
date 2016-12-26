@@ -30,9 +30,9 @@ from bpy.types import Panel, Operator
 
 bl_info = {
     "name": "PS Layout",
-    "author": "Aditia A. Pratama, Adhi Hargo, Johan Tri Handoyo",
-    "version": (1, 0, 5),
-    "blender": (2, 77, 0),
+    "author": "Adhi Hargo, Johan Tri Handoyo, Aditia A. Pratama",
+    "version": (1, 0, 6),
+    "blender": (2, 78, 0),
     "location": "Sequencer > Tools > PS Layout",
     "description": "Create layout files from animatic video.",
     "warning": "",
@@ -379,7 +379,7 @@ class ExtractShotfiles_Base():
                 seq = sequences.new_sound(mi['name'], path,
                                           1, scene.frame_start)
 
-            scene.name = mi['name'] + '_layout'
+            scene.name = mi['name'] + '_anim'
 
             for scn in scenes:
                 if scn.name != scene.name:
@@ -388,7 +388,7 @@ class ExtractShotfiles_Base():
             layoutdir = os.path.join(self.render_basepath) if prefs.use_custom_path else\
                         os.path.join(self.render_basepath, 'layouts')
             markerpath = bpy.path.ensure_ext(
-                filepath=os.path.join(layoutdir, mi['name']), ext=".blend")
+                filepath=os.path.join(layoutdir, 'an_' + mi['name']), ext=".blend")
             bpy.ops.wm.save_as_mainfile(filepath=markerpath, copy=True,
                                         relative_remap=True)
 
@@ -508,6 +508,7 @@ class ExtractShotfiles_Base():
         render.filepath = self.render_filepath_vid
         render.display_mode = 'NONE'
         render.use_compositing = False
+        render.use_sequencer = True
 
         image.file_format = "H264"
 
@@ -554,9 +555,10 @@ class ExtractShotfiles_Base():
                 self.report({"ERROR"}, "Unable to create layout directory.")
 
         if prefs.use_custom_path == True:
-            layoutdir = os.path.join(self.render_basepath, 'layouts')
-            if not os.path.exists(layoutdir):
-                os.makedirs(layoutdir)
+            # Disable this because of custom path
+            # layoutdir = os.path.join(self.render_basepath, 'layouts')
+            # if not os.path.exists(layoutdir):
+            #     os.makedirs(layoutdir)
             clipdir = os.path.join(self.render_clippath, 'clips')
             if not os.path.exists(clipdir):
                 os.makedirs(clipdir)
@@ -820,9 +822,11 @@ class SCENE_OT_rename_markers(bpy.types.Operator):
         self.blendpath = bpy.path.abspath(context.blend_data.filepath)
         blenddir, blendfile = os.path.split(self.blendpath)
         blendname = os.path.splitext(blendfile)[0]
+        blendname = blendname.split('_')
+        blendname = blendname[2] + blendname[4]
 
         for i, marker in enumerate(sorted(context.scene.timeline_markers, key=lambda m: m.frame), 1):
-            marker.name = blendname+'_'+str(i).zfill(3)
+            marker.name = blendname +'_'+str(i).zfill(2) + '-00'
         return {'FINISHED'}
 
 
