@@ -31,8 +31,8 @@ from bpy.types import Panel, Operator
 bl_info = {
     "name": "PS Layout",
     "author": "Adhi Hargo, Johan Tri Handoyo, Aditia A. Pratama",
-    "version": (1, 0, 6),
-    "blender": (2, 78, 0),
+    "version": (1, 0, 7),
+    "blender": (2, 79, 0),
     "location": "Sequencer > Tools > PS Layout",
     "description": "Create layout files from animatic video.",
     "warning": "",
@@ -352,12 +352,12 @@ class ExtractShotfiles_Base():
 
             if prefs.use_custom_path == True:
                 path = os.path.join(self.render_clippath, 'clips',
-                                    mi['name']+'.mov') if prefs.is_render_video else\
+                                    mi['name']+'.mp4') if prefs.is_render_video else\
                         os.path.join(self.render_clippath, 'clips',
                                     mi['name']+'.wav')
             else:
                 path = os.path.join(self.render_basepath, 'clips',
-                                    mi['name']+'.mov') if prefs.is_render_video else\
+                                    mi['name']+'.mp4') if prefs.is_render_video else\
                         os.path.join(self.render_basepath, 'clips',
                                     mi['name']+'.wav')
 
@@ -498,9 +498,9 @@ class ExtractShotfiles_Base():
         scene.use_audio = False # Audio mustn't be muted upon mixdown.
 
         self.render_filepath_vid = os.path.join(self.render_clippath, 'clips',
-                                                mi['name']+'.mov') if prefs.use_custom_path else\
+                                                mi['name']+'.mp4') if prefs.use_custom_path else\
                                     os.path.join(self.render_basepath, 'clips',
-                                                mi['name']+'.mov')
+                                                mi['name']+'.mp4')
         self.render_filepath_aud = os.path.join(self.render_clippath, 'clips',
                                                 mi['name']+'.wav') if prefs.use_custom_path else \
                                     os.path.join(self.render_basepath, 'clips',
@@ -510,9 +510,9 @@ class ExtractShotfiles_Base():
         render.use_compositing = False
         render.use_sequencer = True
 
-        image.file_format = "H264"
+        image.file_format = "FFMPEG"
 
-        ffmpeg.format = 'QUICKTIME'
+        ffmpeg.format = 'MPEG4' 
         ffmpeg.audio_codec = 'AAC'
         ffmpeg.audio_bitrate = 192
 
